@@ -14,10 +14,7 @@ contract StableCoin is ERC20Burnable, Ownable {
 
     constructor() ERC20("StableCoin", "SC") Ownable(msg.sender) {}
 
-    function mint(
-        address _to,
-        uint256 _amount
-    ) external onlyOwner returns (bool) {
+    function mint(address _to, uint256 _amount) external onlyOwner returns (bool) {
         if (_to == address(0)) {
             revert StableCoin_NotZeroAddress();
         }

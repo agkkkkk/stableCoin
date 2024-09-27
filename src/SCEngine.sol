@@ -110,19 +110,24 @@ contract SCEngine is ReentrancyGuard {
         totalCollateralValueUsd = getUserCollateralValueUsd(user);
     }
 
+    /*
+    * Returns how close to liquidation a user is
+    * If a user goes below 1, then they can be liquidated.
+    */
     function _healthFactor(address user) private view returns (uint256) {
-        uint256(totalSCMinted, collateralValueInUsd) = _getAccountInformation(user);
+        (uint256 totalSCMinted, uint256 collateralValueInUsd) = _getAccountInformation(user);
     }
 
     function _revertIfHealthFactorIsBroken(address user) internal view {}
 
     // View function
-    function getUserCollateralValueUsd(address user) public view returns (uint256) {
+    function getUserCollateralValueUsd(address user) public view returns (uint256 totalCollateralValueInUsd) {
         for (uint256 i = 0; i < collateralTokens.length; i++) {
             address token = collateralTokens[i];
             uint256 amount = collateralDeposited[user][token];
             totalCollateralValueInUsd += getUsdValue(token, amount);
         }
+        return totalCollateralValueInUsd;
     }
 
     function getUsdValue(address token, uint256 amount) public view returns (uint256) {
