@@ -15,10 +15,15 @@ contract SCEngine is ReentrancyGuard {
     error SCEngine_TokenAddressesAndPriceFeedAddressesMustBeSameLength();
     error SCEngine_TokenNotSupportedAsCollateral();
     error SCEngine_TransferFailed();
+    error SCEngine_BreaksHealthFactor(uint256 healthFactor);
+    error SCEngine_MintFailed();
 
     // State Variables
     uint256 private constant ADDITIONAL_FEED_PRECISION = 1e10;
     uint256 private constant PRECISION = 1e18;
+    uint256 private constant LIQUIDATION_THRESHOLD = 50;
+    uint256 private constant LIQUIDATION_PRECISION = 100;
+    uint256 private constant MIN_HEALTH_FACTOR = 1;
 
     // token => priceFeed
     mapping(address => address) private _priceFeeds;
@@ -92,6 +97,13 @@ contract SCEngine is ReentrancyGuard {
     /// @notice To mint they must have more collateral than mint Amount
     function mintCollateral(uint256 amountToMint) external moreThanZero(amountToMint) nonReentrant {
         scMinted[msg.sender] += amountToMint;
+
+        _revertIfHealthFactorIsBroken(msg.sender);
+
+        bool success = stable_coin.mint(msg.sender, amountToMint);
+        if (!success) {
+            revert SCEngine_MintFailed();
+        }
     }
 
     function burnSC() external {}
@@ -116,9 +128,19 @@ contract SCEngine is ReentrancyGuard {
     */
     function _healthFactor(address user) private view returns (uint256) {
         (uint256 totalSCMinted, uint256 collateralValueInUsd) = _getAccountInformation(user);
+
+        uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+        return (collateralAdjustedForThreshold * PRECISION) / totalSCMinted;
     }
 
-    function _revertIfHealthFactorIsBroken(address user) internal view {}
+    // Check health factor, i.e. if they have enough collateral, if not revert.
+    function _revertIfHealthFactorIsBroken(address user) internal view {
+        uint256 userHealthFactor = _healthFactor(user);
+
+        if (userHealthFactor < MIN_HEALTH_FACTOR) {
+            revert SCEngine_BreaksHealthFactor(userHealthFactor);
+        }
+    }
 
     // View function
     function getUserCollateralValueUsd(address user) public view returns (uint256 totalCollateralValueInUsd) {
