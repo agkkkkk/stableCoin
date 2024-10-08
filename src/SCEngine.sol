@@ -38,6 +38,7 @@ contract SCEngine is ReentrancyGuard {
 
     // Events
     event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
+    event CollateralRedeemed(address indexed user, address indexed token, uint256 indexed amount);
 
     // modifiers
     modifier moreThanZero(uint256 amount) {
@@ -67,13 +68,22 @@ contract SCEngine is ReentrancyGuard {
         stable_coin = StableCoin(stableCoin);
     }
 
-    function depositCollateralAndMintSC() external {}
+    /// @dev function to deposit collateral token and mint SC
+    /// @param _collateralToken address of token to be collateralized
+    /// @param _amountCollateral total Token amount to collateralize
+    /// @param _amountSCToMint amount of SC to mint
+    function depositCollateralAndMintSC(address _collateralToken, uint256 _amountCollateral, uint256 _amountSCToMint)
+        external
+    {
+        depositCollateral(_collateralToken, _amountCollateral);
+        mintSC(_amountSCToMint);
+    }
 
     /// @dev function to deposit collateral token
     /// @param _collateralToken address of token to be collateralized
     /// @param _amountCollateral total Token amount
     function depositCollateral(address _collateralToken, uint256 _amountCollateral)
-        external
+        public
         moreThanZero(_amountCollateral)
         isTokenAllowed(_collateralToken)
         nonReentrant
@@ -88,14 +98,41 @@ contract SCEngine is ReentrancyGuard {
         }
     }
 
-    function redeemCollateralforSC() external {}
+    /// @dev function to burn & redeem collateral token
+    /// @param tokenCollateralAddress address of token to be collateralized
+    /// @param amountCollateral total Token amount
+    /// @param amountToBurn amount of token to burn
+    function redeemCollateralforSC(address tokenCollateralAddress, uint256 amountCollateral, uint256 amountToBurn)
+        external
+    {
+        burnSC(amountToBurn);
+        redeemCollateral(tokenCollateralAddress, amountCollateral);
+    }
 
-    function redeemCollateral() external {}
+    /// @dev function to redeem collateral token
+    /// @param _tokenCollateralAddress address of token to be collateralized
+    /// @param _amountCollateral total Token amount
+    function redeemCollateral(address _tokenCollateralAddress, uint256 _amountCollateral)
+        public
+        moreThanZero(_amountCollateral)
+        nonReentrant
+    {
+        collateralDeposited[msg.sender][_tokenCollateralAddress] -= _amountCollateral;
+        emit CollateralRedeemed(msg.sender, _tokenCollateralAddress, _amountCollateral);
+
+        bool success = IERC20(_tokenCollateralAddress).transfer(msg.sender, _amountCollateral);
+
+        if (!success) {
+            revert SCEngine_TransferFailed();
+        }
+
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
 
     /// @dev To mint StableCoin, must check whether enough amount is collateralized
     /// @param amountToMint total token amount to be minted
     /// @notice To mint they must have more collateral than mint Amount
-    function mintCollateral(uint256 amountToMint) external moreThanZero(amountToMint) nonReentrant {
+    function mintSC(uint256 amountToMint) public moreThanZero(amountToMint) nonReentrant {
         scMinted[msg.sender] += amountToMint;
 
         _revertIfHealthFactorIsBroken(msg.sender);
@@ -106,7 +143,17 @@ contract SCEngine is ReentrancyGuard {
         }
     }
 
-    function burnSC() external {}
+    function burnSC(uint256 amount) public moreThanZero(amount) {
+        scMinted[msg.sender] -= amount;
+        bool success = stable_coin.transferFrom(msg.sender, address(this), amount);
+
+        if (!success) {
+            revert SCEngine_TransferFailed();
+        }
+
+        stable_coin.burn(amount);
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
 
     function liquidate() external {}
 
